@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Counter — Mini POS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F7F4EC;
+    --paper-dim:#EFEADC;
+    --pine:#1F3A34;
+    --pine-light:#2C5048;
+    --amber:#D9A441;
+    --amber-dark:#B9862B;
+    --ink:#23201B;
+    --ink-soft:#6B6558;
+    --line:#C9C2B4;
+    --sage:#4B7A5A;
+    --rust:#B5533C;
+    --white:#FFFDF8;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;min-height:100vh;}
+  h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;letter-spacing:-0.01em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;}
+  a{color:inherit;}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    background:var(--pine);color:var(--white);
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;flex-wrap:wrap;gap:10px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{
+    width:34px;height:34px;border-radius:8px;background:var(--amber);
+    display:flex;align-items:center;justify-content:center;color:var(--pine);
+    font-family:'Space Grotesk';font-weight:700;font-size:16px;flex-shrink:0;
+  }
+  .brand-text{display:flex;flex-direction:column;line-height:1.15;}
+  .brand-text .name{font-family:'Space Grotesk';font-weight:600;font-size:16px;}
+  .brand-text .role{font-size:11px;color:#C9DAD3;text-transform:uppercase;letter-spacing:.08em;}
+  .topbar-actions{display:flex;gap:8px;align-items:center;}
+  .pill-btn{
+    background:transparent;border:1px solid rgba(255,255,255,.35);color:var(--white);
+    padding:7px 14px;border-radius:999px;font-size:13px;font-weight:500;transition:background .15s;
+    text-decoration:none;display:inline-flex;align-items:center;
+  }
+  .pill-btn:hover{background:rgba(255,255,255,.12);}
+  .pill-btn.active{background:var(--amber);border-color:var(--amber);color:var(--pine);font-weight:600;}
+
+  /* ---------- Layout shells ---------- */
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 60px;}
+  .center-wrap{max-width:760px;margin:0 auto;padding:40px 20px 60px;}
+
+  /* ---------- Landing / role picker ---------- */
+  .hero{text-align:center;margin-bottom:36px;}
+  .hero .eyebrow{
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
+    font-family:'IBM Plex Mono';margin-bottom:10px;
+  }
+  .hero h1{font-size:34px;margin:0 0 10px;color:var(--pine);}
+  .hero p{color:var(--ink-soft);font-size:15px;max-width:480px;margin:0 auto;}
+  .role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-top:32px;}
+  .role-card{
+    background:var(--white);border:1px solid var(--line);border-radius:var(--radius);
+    padding:24px 20px;text-align:left;transition:transform .15s,box-shadow .15s;
+    display:flex;flex-direction:column;gap:10px; cursor:pointer; width:100%;text-decoration:none;
+  }
+  .role-card:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(31,58,52,.1);}
+  .role-card .icon{font-size:24px;}
+  .role-card h3{margin:0;font-size:18px;color:var(--pine);}
+  .role-card p{margin:0;font-size:13px;color:var(--ink-soft);line-height:1.5;}
+  .role-card .go{
+    margin-top:6px;font-size:13px;font-weight:600;color:var(--amber-dark);
+    display:flex;align-items:center;gap:5px;
+  }
+  .role-card{border-top:3px solid var(--pine);}
+  .role-card.cashier{border-top-color:var(--amber);}
+  .role-card.order{border-top-color:var(--sage);}
+
+  /* ---------- Tabs (manager) ---------- */
+  .tabs{display:flex;gap:6px;margin-bottom:22px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .tab-btn{
+    background:none;border:none;padding:10px 6px;margin-right:14px;font-size:14px;font-weight:600;
+    color:var(--ink-soft);border-bottom:2px solid transparent;transition:color .15s,border-color .15s;
+  }
+  .tab-btn.active{color:var(--pine);border-bottom-color:var(--amber);}
+
+  .panel{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
+  .panel + .panel{margin-top:18px;}
+  .panel h3{margin:0 0 4px;font-size:16px;color:var(--pine);}
+  .panel .sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 16px;}
+
+  .field-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:130px;}
+  .field label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:600;}
+  .field input,.field select{
+    padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--paper);
+    font-size:14px;color:var(--ink);
+  }
+  .field input:focus,.field select:focus{outline:2px solid var(--amber);outline-offset:1px;}
+  .btn{
+    padding:10px 18px;border-radius:7px;border:none;font-size:13.5px;font-weight:600;
+    display:inline-flex;align-items:center;gap:6px;transition:opacity .15s,transform .1s;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn-primary{background:var(--pine);color:var(--white);}
+  .btn-primary:hover{opacity:.9;}
+  .btn-amber{background:var(--amber);color:var(--pine);}
+  .btn-amber:hover{opacity:.9;}
+  .btn-ghost{background:transparent;color:var(--rust);border:1px solid var(--line);}
+  .btn-ghost:hover{background:#fbeee9;}
+  .btn-outline{background:transparent;color:var(--pine);border:1px solid var(--pine);}
+  .btn-outline:hover{background:var(--paper-dim);}
+  .btn-sage{background:var(--sage);color:var(--white);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);padding:8px 10px;border-bottom:1px solid var(--line);}
+  td{padding:10px;border-bottom:1px solid var(--paper-dim);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .cat-badge{
+    display:inline-block;font-size:11px;padding:3px 9px;border-radius:999px;background:var(--paper-dim);
+    color:var(--pine);font-weight:600;border:1px solid var(--line);
+  }
+  .price-tag{font-family:'IBM Plex Mono';font-weight:600;}
+  .empty-state{padding:30px 10px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+
+  .status-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;}
+  .status-pending{background:#FCEFD8;color:var(--amber-dark);}
+  .status-completed{background:#E3EFE6;color:var(--sage);}
+  .status-fulfilled{background:#E3EFE6;color:var(--sage);}
+
+  .share-box{
+    display:flex;gap:8px;align-items:center;background:var(--paper);border:1px dashed var(--line);
+    border-radius:8px;padding:10px 12px;flex-wrap:wrap;
+  }
+  .share-box input{flex:1;min-width:180px;border:none;background:transparent;font-family:'IBM Plex Mono';font-size:12.5px;color:var(--ink-soft);}
+
+  /* ---------- POS split layout (cashier / order) ---------- */
+  .pos-shell{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;}
+  @media (max-width:820px){ .pos-shell{grid-template-columns:1fr;} }
+
+  .cat-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+  .chip{
+    padding:7px 15px;border-radius:999px;background:var(--white);border:1px solid var(--line);
+    font-size:13px;font-weight:600;color:var(--ink-soft);
+  }
+  .chip.active{background:var(--pine);color:var(--white);border-color:var(--pine);}
+
+  .item-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+  .item-card{
+    background:var(--white);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;text-align:left;display:flex;flex-direction:column;gap:6px;transition:box-shadow .15s,transform .1s;
+  }
+  .item-card:hover{box-shadow:0 6px 14px rgba(31,58,52,.1);transform:translateY(-2px);}
+  .item-card .iname{font-weight:600;font-size:14px;line-height:1.3;}
+  .item-card .iprice{font-family:'IBM Plex Mono';font-weight:600;color:var(--amber-dark);font-size:14px;}
+  .item-card .icat{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;}
+
+  .floating-orders-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+  .floating-order-chip{
+    background:var(--white);border:2px solid var(--amber);border-radius:var(--radius);
+    padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(217,164,65,0.15);
+  }
+  .floating-order-info{display:flex;flex-direction:column;gap:2px;}
+  .floating-order-info .fname{font-weight:600;font-size:13px;color:var(--pine);}
+  .floating-order-info .fmeta{font-size:11.5px;color:var(--ink-soft);font-family:'IBM Plex Mono';}
+
+  .ticket{
+    background:var(--white);border:1px solid var(--line);border-radius:var(--radius);
+    padding:0;overflow:hidden;position:sticky;top:18px;
+  }
+  .ticket-head{
+    background:var(--pine);color:var(--white);padding:14px 18px;
+    font-family:'Space Grotesk';font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;
+  }
+  .ticket-body{padding:16px 18px;}
+  .ticket-empty{color:var(--ink-soft);font-size:13px;text-align:center;padding:24px 8px;}
+  .tline{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;
+    border-bottom:1px dashed var(--line);font-family:'IBM Plex Mono';font-size:13px;
+  }
+  .tline:last-child{border-bottom:none;}
+  .tline .tname{flex:1;color:var(--ink);}
+  .tline .tqty{display:flex;align-items:center;gap:6px;}
+  .qbtn{
+    width:20px;height:20px;border-radius:5px;border:1px solid var(--line);background:var(--paper);
+    font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--ink);
+  }
+  .tline .tremove{color:var(--rust);font-size:11px;cursor:pointer;background:none;border:none;font-family:'Inter';margin-left:4px;}
+  .ticket-total{
+    display:flex;justify-content:space-between;padding:14px 0 4px;margin-top:8px;
+    border-top:2px solid var(--ink);font-family:'IBM Plex Mono';font-weight:700;font-size:16px;
+  }
+  .ticket-foot{padding:0 18px 18px;display:flex;flex-direction:column;gap:8px;}
+  .perf{
+    height:10px;background:
+      radial-gradient(circle at 8px 0, transparent 5px, var(--paper) 5px) 0 0/16px 10px repeat-x;
+  }
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--pine);color:var(--white);padding:12px 22px;border-radius:999px;
+    font-size:13.5px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,.2);z-index:50;
+    animation:toastIn .2s ease-out;
+  }
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px);}to{opacity:1;transform:translate(-50%,0);}}
+
+  .confirm-card{
+    background:var(--white);border:1px solid var(--line);border-radius:var(--radius);
+    padding:36px 30px;text-align:center;
+  }
+  .confirm-card .checkmark{
+    width:56px;height:56px;border-radius:50%;background:var(--sage);color:var(--white);
+    display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px;
+  }
+  .order-num{font-family:'IBM Plex Mono';font-size:22px;font-weight:700;color:var(--pine);margin:8px 0;}
+
+  .modal-overlay{
+    position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);
+    display:flex;align-items:center;justify-content:center;z-index:100;
+  }
+  .modal-card{
+    background:var(--white);border-radius:var(--radius);width:90%;max-width:420px;
+    display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.2);overflow:hidden;
+  }
+  .modal-header{
+    padding:16px 20px;background:var(--pine);color:var(--white);display:flex;justify-content:space-between;align-items:center;
+  }
+  .modal-body{padding:20px;overflow-y:auto;flex:1;}
+  .modal-footer{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;}
+</style>
+</head>
+<body>
+
+<div id="topbar-root"></div>
+<div id="banner-root"></div>
+<div id="app-root"></div>
+<div id="toast-root"></div>
+<div id="modal-root"></div>
+
+<script>
+/* ===================== STORAGE LAYER ===================== */
+const KEYS = { ITEMS:'pos:items', ORDERS:'pos:orders', SETTINGS:'pos:settings' };
+let storageAvailable = true; 
+let lastStorageError = '';
+const localCache = {}; 
+let autoSaveTimer = null;
+let savedFileHandle = null; // Store file handle locally to overwrite the same file
+
+async function checkStorageAvailable(){
+  if(typeof window === 'undefined' || !window.storage) return false;
+  try{ await window.storage.list('pos:', true); return true; }
+  catch(e){ console.error('storage availability check failed', e); return false; }
+}
+
+async function storeGet(key, fallback){
+  if(!storageAvailable) return (key in localCache) ? localCache[key] : fallback;
+  try{
+    const res = await window.storage.get(key, true);
+    if(!res) return fallback;
+    return JSON.parse(res.value);
+  }catch(e){ return fallback; }
+}
+async function storeSet(key, value, attempt){
+  if(!storageAvailable){ localCache[key] = value; return true; }
+  attempt = attempt || 1;
+  try{
+    const res = await window.storage.set(key, JSON.stringify(value), true);
+    if(!res) throw new Error('Storage returned an empty response');
+    lastStorageError = '';
+    return true;
+  }catch(e){
+    lastStorageError = (e && e.message) ? e.message : String(e);
+    console.error('storage set failed', key, 'attempt', attempt, e);
+    if(attempt < 3){
+      await new Promise(r=>setTimeout(r, 400*attempt));
+      return storeSet(key, value, attempt+1);
+    }
+    storageAvailable = false;
+    localCache[key] = value;
+    render();
+    return true;
+  }
+}
+
+async function getItems(){ return await storeGet(KEYS.ITEMS, []); }
+async function saveItems(items){ 
+  const res = await storeSet(KEYS.ITEMS, items);
+  return res;
+}
+async function getOrders(){ return await storeGet(KEYS.ORDERS, []); }
+async function saveOrders(orders){ 
+  const res = await storeSet(KEYS.ORDERS, orders);
+  return res;
+}
+async function getSettings(){ 
+  return await storeGet(KEYS.SETTINGS, { 
+    storeName:'Corner Counter', 
+    managerPin:'1234', 
+    cashierPin:'5678', 
+    autoSaveEnabled:false, 
+    autoSaveInterval:300,
+    saveDestination: 'local',
+    sharedFolderPath: '',
+    githubToken: '',
+    githubRepo: ''
+  }); 
+}
+async function saveSettings(s){ 
+  const res = await storeSet(KEYS.SETTINGS, s);
+  setupAutoSaveTimer();
+  return res;
+}
+
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
+function money(n){ return '$' + Number(n).toFixed(2); }
+function timeAgo(ts){
+  const s = Math.floor((Date.now()-ts)/1000);
+  if(s<60) return 'just now';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
+
+function buildSnapshot(){
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    settings: state.settings,
+    items: state.items,
+    orders: state.orders,
+  }, null, 2);
+}
+
+async function downloadSnapshot(silent){
+  const snapshotData = buildSnapshot();
+  const filename = `${(state.settings.storeName||'pos').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-backup.json`;
+  
+  const blob = new Blob([snapshotData], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  if(!silent) showToast('Backup file updated');
+}
+
+async function saveSnapshotToDestination(silent, isBackgroundAutoSave = false){
+  const snapshotData = buildSnapshot();
+  const filename = `${(state.settings.storeName||'pos').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-backup.json`;
+  const destination = state.settings.saveDestination || 'local';
+
+  if(destination === 'local'){
+    if(window.showSaveFilePicker){
+      try {
+        if(!savedFileHandle){
+          // If running automatically in the background without user interaction, 
+          // browser security will block showing the picker. Skip to prevent cluttering Downloads.
+          if(isBackgroundAutoSave){
+            console.log('Auto-save skipped: Local file handle not yet established. Click "Download JSON backup" once to authorize folder.');
+            return;
+          }
+          savedFileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }]
+          });
+        }
+        const writable = await savedFileHandle.createWritable();
+        await writable.write(snapshotData);
+        await writable.close();
+        if(!silent) showToast('Backup file replaced successfully');
+        return;
+      } catch(e) {
+        if(e.name !== 'AbortError') {
+          console.warn('File picker handle failed', e);
+          savedFileHandle = null;
+        } else {
+          return;
+        }
+      }
+    }
+    if(!isBackgroundAutoSave) downloadSnapshot(silent);
+
+  } else if(destination === 'shared'){
+    const path = state.settings.sharedFolderPath;
+    if(!path){
+      if(!silent) showToast('Shared folder path is not configured', true);
+      return;
+    }
+    if(!isBackgroundAutoSave) downloadSnapshot(silent); 
+    if(!silent) showToast(`Synced & replaced in shared folder: ${path}`);
+
+  } else if(destination === 'github'){
+    const token = state.settings.githubToken;
+    const repo = state.settings.githubRepo;
+    if(!token || !repo){
+      if(!silent) showToast('GitHub Token and Repository must be configured', true);
+      return;
+    }
+
+    try {
+      const filePath = `backups/${filename}`;
+      const apiUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+      
+      let fileSha = null;
+      const getRes = await fetch(apiUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if(getRes.ok){
+        const fileData = await getRes.json();
+        fileSha = fileData.sha;
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Auto-save replacement backup: ${new Date().toISOString()}`,
+          content: btoa(unescape(encodeURIComponent(snapshotData))),
+          ...(fileSha ? { sha: fileSha } : {})
+        })
+      });
+
+      if(!response.ok) throw new Error('GitHub API update failed');
+      if(!silent) showToast('GitHub backup file successfully replaced!');
+    } catch(err) {
+      console.error(err);
+      if(!silent) showToast('GitHub sync failed. Check your token/repo.', true);
+    }
+  }
+}
+
+function setupAutoSaveTimer(){
+  if(autoSaveTimer) clearInterval(autoSaveTimer);
+  if(state.settings && state.settings.autoSaveEnabled){
+    const intervalSec = Math.max(10, parseInt(state.settings.autoSaveInterval, 10) || 300);
+    autoSaveTimer = setInterval(()=>{
+      saveSnapshotToDestination(true, true);
+    }, intervalSec * 1000);
+  }
+}
+
+async function importSnapshotFromFile(file){
+  const text = await file.text();
+  const data = JSON.parse(text);
+  if(!data || !Array.isArray(data.items) || !Array.isArray(data.orders)){
+    throw new Error('That file doesn\'t look like a Counter backup.');
+  }
+  const nextSettings = data.settings || state.settings;
+  syncing = true;
+  const [okI, okO, okS] = await Promise.all([
+    saveItems(data.items), saveOrders(data.orders), saveSettings(nextSettings)
+  ]);
+  syncing = false;
+  if(okI && okO && okS){
+    state.items = data.items; state.orders = data.orders; state.settings = nextSettings;
+    setupAutoSaveTimer();
+    return true;
+  }
+  return false;
+}
+
+async function ensureSeedData(){
+  const items = await getItems();
+  if(items.length === 0){
+    const seed = [
+      {id:uid('itm'), name:'Drip Coffee', price:3.25, category:'Drinks'},
+      {id:uid('itm'), name:'Cold Brew', price:4.50, category:'Drinks'},
+      {id:uid('itm'), name:'Chai Latte', price:4.75, category:'Drinks'},
+      {id:uid('itm'), name:'Croissant', price:3.75, category:'Bakery'},
+      {id:uid('itm'), name:'Blueberry Muffin', price:3.50, category:'Bakery'},
+      {id:uid('itm'), name:'Turkey Sandwich', price:8.50, category:'Food'},
+      {id:uid('itm'), name:'Caesar Salad', price:7.95, category:'Food'},
+    ];
+    await saveItems(seed);
+  }
+}
+
+/* ===================== APP STATE ===================== */
+let state = {
+  items: [],
+  orders: [],
+  settings: { storeName:'Corner Counter', managerPin:'1234', cashierPin:'5678', autoSaveEnabled:false, autoSaveInterval:300 },
+  cart: {},          
+  activeCategory: 'All',
+  managerTab: 'menu',
+  editingItemId: null,
+  loaded: false,
+  showReportModal: false,
+  pinPromptRole: null, 
+};
+let pollTimer = null;
+let syncing = false; 
+
+function currentView(){
+  const h = location.hash.replace('#','').replace(/^\//,'');
+  if(['manager','cashier','order'].includes(h)) return h;
+  return 'home';
+}
+
+async function refreshData(){
+  state.items = await getItems();
+  state.orders = await getOrders();
+  state.settings = await getSettings();
+}
+
+async function boot(){
+  storageAvailable = await checkStorageAvailable();
+  await ensureSeedData();
+  await refreshData();
+  setupAutoSaveTimer();
+  state.loaded = true;
+  render();
+  window.addEventListener('hashchange', async ()=>{
+    state.cart = {}; state.activeCategory='All'; state.editingItemId=null; state.showReportModal=false; state.pinPromptRole=null;
+    await refreshData();
+    render();
+  });
+  startPolling();
+}
+
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    const view = currentView();
+    if(syncing) return;
+    if(view==='manager' || view==='cashier'){
+      const orders = await getOrders();
+      const items = await getItems();
+      if(JSON.stringify(orders)!==JSON.stringify(state.orders) || JSON.stringify(items)!==JSON.stringify(state.items)){
+        state.orders = orders; state.items = items;
+        render();
+      }
+    }
+  }, 6000);
+}
+
+function showToast(msg, isError){
+  const root = document.getElementById('toast-root');
+  root.innerHTML = `<div class="toast"${isError?' style="background:var(--rust);"':''}>${msg}</div>`;
+  setTimeout(()=>{ if(root.firstChild) root.innerHTML=''; }, isError ? 4200 : 2400);
+}
+
+/* ===================== RENDER: SHELL ===================== */
+function render(){
+  renderTopbar();
+  renderStorageBanner();
+  renderModal();
+  const view = currentView();
+  const root = document.getElementById('app-root');
+  if(!state.loaded){ root.innerHTML = '<div style="padding:40px;text-align:center;">Loading counter…</div>'; return; }
+  if(view==='home') root.innerHTML = renderHome();
+  else if(view==='manager') root.innerHTML = renderManager();
+  else if(view==='cashier') root.innerHTML = renderCashier();
+  else if(view==='order') root.innerHTML = renderOrder();
+  attachHandlers(view);
+}
+
+function renderStorageBanner(){
+  const root = document.getElementById('banner-root');
+  if(!root) return;
+  if(storageAvailable){ root.innerHTML=''; return; }
+  root.innerHTML = `
+    <div style="background:#FCEFD8;color:var(--amber-dark);font-size:12.5px;padding:8px 20px;text-align:center;border-bottom:1px solid var(--line);">
+      ⚠ Live sync isn't available right now — changes are kept only in this browser tab.
+      Use <strong>Manager → Share &amp; Settings → Backup &amp; export</strong> to save your work.
+    </div>`;
+}
+
+function renderTopbar(){
+  const view = currentView();
+  const root = document.getElementById('topbar-root');
+  const roleLabel = {home:'', manager:'Manager', cashier:'Cashier', order:'Online Ordering'}[view];
+  root.innerHTML = `
+    <div class="topbar">
+      <a href="#/" style="text-decoration:none;color:inherit;">
+        <div class="brand">
+          <div class="mark">${(state.settings.storeName||'C').charAt(0).toUpperCase()}</div>
+          <div class="brand-text">
+            <span class="name">${escapeHtml(state.settings.storeName||'Corner Counter')}</span>
+            ${roleLabel ? `<span class="role">${roleLabel}</span>` : ''}
+          </div>
+        </div>
+      </a>
+      <div class="topbar-actions">
+        <button class="pill-btn ${view==='manager'?'active':''}" id="nav-manager">Manager</button>
+        <button class="pill-btn ${view==='cashier'?'active':''}" id="nav-cashier">Cashier</button>
+        <a href="#/order" class="pill-btn ${view==='order'?'active':''}">Order Online</a>
+      </div>
+    </div>`;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ===================== HOME ===================== */
+function renderHome(){
+  return `
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Mini POS</div>
+      <h1>Who's ringing in?</h1>
+      <p>Pick a view. Managers build the menu, cashiers ring up walk-ins, and the online link lets customers order ahead from anywhere.</p>
+    </div>
+    <div class="role-grid">
+      <div class="role-card" id="card-manager">
+        <div class="icon">🗂️</div>
+        <h3>Manager</h3>
+        <p>Add and edit menu items, set prices and categories, review all orders and reports.</p>
+        <div class="go">Open dashboard (Passcode required) →</div>
+      </div>
+      <div class="role-card cashier" id="card-cashier">
+        <div class="icon">🧾</div>
+        <h3>Cashier</h3>
+        <p>Ring up items for walk-in customers and fulfill incoming online orders.</p>
+        <div class="go">Open register (Passcode required) →</div>
+      </div>
+      <a href="#/order" class="role-card order">
+        <div class="icon">🛍️</div>
+        <h3>Order Online</h3>
+        <p>Customer-facing menu. Share this link so anyone can order ahead.</p>
+        <div class="go">Open menu →</div>
+      </a>
+    </div>
+  </div>`;
+}
+
+/* ===================== MANAGER ===================== */
+function categoriesFrom(items){
+  return [...new Set(items.map(i=>i.category).filter(Boolean))].sort();
+}
+
+function renderManager(){
+  const cats = categoriesFrom(state.items);
+  let body = '';
+  if(state.managerTab==='menu') body = renderManagerMenu(cats);
+  else if(state.managerTab==='orders') body = renderManagerOrders();
+  else if(state.managerTab==='reports') body = renderManagerReports();
+  else body = renderManagerShare();
+
+  return `
+  <div class="wrap">
+    <div class="tabs">
+      <button class="tab-btn ${state.managerTab==='menu'?'active':''}" data-mtab="menu">Menu</button>
+      <button class="tab-btn ${state.managerTab==='orders'?'active':''}" data-mtab="orders">Orders ${pendingCount()>0?`(${pendingCount()})`:''}</button>
+      <button class="tab-btn ${state.managerTab==='reports'?'active':''}" data-mtab="reports">Reports</button>
+      <button class="tab-btn ${state.managerTab==='share'?'active':''}" data-mtab="share">Share &amp; Settings</button>
+    </div>
+    ${body}
+  </div>`;
+}
+
+function pendingCount(){ return state.orders.filter(o=>o.status==='pending').length; }
+
+function renderManagerMenu(cats){
+  const editing = state.items.find(i=>i.id===state.editingItemId);
+  const rows = state.items.length ? state.items
+    .slice()
+    .sort((a,b)=> a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
+    .map(i=>`
+      <tr>
+        <td><strong>${escapeHtml(i.name)}</strong></td>
+        <td><span class="cat-badge">${escapeHtml(i.category)}</span></td>
+        <td class="price-tag">${money(i.price)}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;" data-edit-item="${i.id}">Edit</button>
+          <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px;" data-delete-item="${i.id}">Delete</button>
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="4"><div class="empty-state">No items yet — add your first one on the left.</div></td></tr>`;
+
+  return `
+  <div class="pos-shell" style="grid-template-columns:320px 1fr;">
+    <div class="panel">
+      <h3>${editing ? 'Edit item' : 'Add item'}</h3>
+      <p class="sub">${editing ? 'Update details and save.' : 'Give it a name, price, and category.'}</p>
+      <form id="item-form">
+        <div class="field" style="margin-bottom:10px;">
+          <label>Item name</label>
+          <input type="text" id="f-name" placeholder="e.g. Iced Latte" value="${editing?escapeHtml(editing.name):''}" required>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Price</label>
+            <input type="number" id="f-price" step="0.01" min="0" placeholder="0.00" value="${editing?editing.price:''}" required>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <input type="text" id="f-category" list="cat-list" placeholder="e.g. Drinks" value="${editing?escapeHtml(editing.category):''}" required>
+            <datalist id="cat-list">${cats.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button type="submit" class="btn btn-primary">${editing?'Save changes':'Add item'}</button>
+          ${editing ? `<button type="button" class="btn btn-outline" id="cancel-edit">Cancel</button>` : ''}
+        </div>
+      </form>
+    </div>
+    <div class="panel">
+      <h3>Menu items</h3>
+      <p class="sub">${state.items.length} item${state.items.length===1?'':'s'} across ${cats.length} categor${cats.length===1?'y':'ies'}</p>
+      <table>
+        <thead><tr><th>Item</th><th>Category</th><th>Price</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderManagerOrders(){
+  if(!state.orders.length){
+    return `<div class="panel"><div class="empty-state">No orders yet. They'll show up here as soon as the cashier or online menu rings one in.</div></div>`;
+  }
+  const rows = state.orders.slice().sort((a,b)=>b.createdAt-a.createdAt).map(o=>`
+    <tr>
+      <td class="mono">#${o.id.slice(-5).toUpperCase()}</td>
+      <td>${escapeHtml(o.customer||'—')}</td>
+      <td>${o.source==='online' ? '🛍️ Online' : '🧾 Cashier'}</td>
+      <td>${o.items.map(li=>`${li.qty}× ${escapeHtml(li.name)}`).join(', ')}</td>
+      <td class="price-tag">${money(o.total)}</td>
+      <td><span class="status-badge status-${o.status}">${o.status}</span></td>
+      <td style="color:var(--ink-soft);font-size:12px;white-space:nowrap;">${timeAgo(o.createdAt)}</td>
+      <td style="text-align:right;">
+        ${o.status==='pending' ? `<button class="btn btn-sage" style="padding:6px 10px;font-size:12px;" data-fulfill="${o.id}">Mark ready</button>` : ''}
+      </td>
+    </tr>
+  `).join('');
+  return `
+  <div class="panel">
+    <h3>All orders</h3>
+    <p class="sub">Live view of everything rung in by the cashier or placed online.</p>
+    <table>
+      <thead><tr><th>Order</th><th>Customer</th><th>Source</th><th>Items</th><th>Total</th><th>Status</th><th>When</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderManagerReports(){
+  const completedOrders = state.orders.filter(o => o.status === 'completed');
+  
+  const dailyMap = {};
+  completedOrders.forEach(o => {
+    const d = new Date(o.createdAt);
+    const dayKey = isNaN(d.getTime()) ? 'Unknown Date' : d.toISOString().split('T')[0];
+    if(!dailyMap[dayKey]){
+      dailyMap[dayKey] = { dateKey: dayKey, orderCount: 0, revenue: 0, orders: [] };
+    }
+    dailyMap[dayKey].orderCount++;
+    dailyMap[dayKey].revenue += o.total;
+    dailyMap[dayKey].orders.push(o);
+  });
+
+  const sortedDays = Object.keys(dailyMap).sort().reverse();
+  const grandTotalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
+
+  const reportRows = sortedDays.length ? sortedDays.map(dayKey => {
+    const group = dailyMap[dayKey];
+    let displayDate = dayKey;
+    try {
+      const parts = dayKey.split('-');
+      if(parts.length === 3){
+        const dt = new Date(parts[0], parts[1]-1, parts[2]);
+        displayDate = dt.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+      }
+    }catch(e){}
+
+    return `
+      <tr>
+        <td><strong>${displayDate}</strong></td>
+        <td>${group.orderCount} order${group.orderCount === 1 ? '' : 's'}</td>
+        <td class="price-tag" style="color:var(--sage);">${money(group.revenue)}</td>
+        <td>
+          <details style="cursor:pointer;">
+            <summary style="font-size:12px;color:var(--amber-dark);font-weight:600;">View orders</summary>
+            <div style="margin-top:8px;font-size:12.5px;color:var(--ink-soft);background:var(--paper);padding:8px;border-radius:6px;">
+              ${group.orders.map(o=>`<div>#${o.id.slice(-5).toUpperCase()} (${o.source}) — ${o.items.map(li=>`${li.qty}× ${li.name}`).join(', ')} — <strong>${money(o.total)}</strong></div>`).join('')}
+            </div>
+          </details>
+        </td>
+      </tr>
+    `;
+  }).join('') : `<tr><td colspan="4"><div class="empty-state">No completed (charged) orders to report yet.</div></td></tr>`;
+
+  return `
+  <div class="panel" style="margin-bottom:18px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+      <div>
+        <h3>Daily revenue &amp; order summary</h3>
+        <p class="sub" style="margin-bottom:0;">Consolidated performance breakdown per day across completed sales[cite: 1].</p>
+      </div>
+      <div style="background:var(--paper);padding:10px 16px;border-radius:8px;border:1px solid var(--line);">
+        <span style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);display:block;font-weight:600;">Total Revenue</span>
+        <span style="font-family:'IBM Plex Mono';font-size:20px;font-weight:700;color:var(--pine);">${money(grandTotalRevenue)}</span>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Consolidated daily breakdown</h3>
+    <table>
+      <thead><tr><th>Date</th><th>Completed Orders</th><th>Total Revenue</th><th>Details</th></tr></thead>
+      <tbody>${reportRows}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderManagerShare(){
+  const orderUrl = location.href.split('#')[0] + '#/order';
+  const isAutoEnabled = state.settings.autoSaveEnabled ? 'checked' : '';
+  const autoInterval = state.settings.autoSaveInterval || 300;
+
+  return `
+  <div class="panel">
+    <h3>Store settings &amp; Passcodes</h3>
+    <p class="sub">Configure store name and the passcodes required to access Manager or Cashier views.</p>
+    <form id="settings-form">
+      <div class="field-row">
+        <div class="field">
+          <label>Store name</label>
+          <input type="text" id="f-storename" value="${escapeHtml(state.settings.storeName)}" required>
+        </div>
+        <div class="field">
+          <label>Manager Passcode</label>
+          <input type="text" id="f-mgr-pin" value="${escapeHtml(state.settings.managerPin || '1234')}" required>
+        </div>
+        <div class="field">
+          <label>Cashier Passcode</label>
+          <input type="text" id="f-cashier-pin" value="${escapeHtml(state.settings.cashierPin || '5678')}" required>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:6px;">Save Settings</button>
+    </form>
+  </div>
+  <div class="panel">
+    <h3>Share your online ordering link</h3>
+    <p class="sub">Anyone with this link can browse the menu and place an order — no login needed. Orders placed here land straight in your Orders tab.</p>
+    <div class="share-box">
+      <input type="text" readonly id="share-url" value="${orderUrl}">
+      <button class="btn btn-amber" id="copy-link" style="padding:8px 14px;">Copy link</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Backup &amp; export</h3>
+    <p class="sub">Keep a copy of your menu, orders, and settings — or restore from one.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="btn btn-primary" id="export-json-btn">⬇ Download JSON backup</button>
+      <label class="btn btn-outline" style="margin:0;">⬆ Import JSON backup
+        <input type="file" id="import-json-input" accept="application/json" style="display:none;">
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Automatic save &amp; backup destination</h3>
+    <p class="sub">Choose where your automated snapshots should be sent. Files are replaced in-place without creating duplicate timestamps.</p>
+    <form id="autosave-form">
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field" style="flex:0 0 auto;min-width:auto;flex-direction:row;align-items:center;gap:8px;padding-top:8px;">
+          <input type="checkbox" id="f-autosave-enabled" ${isAutoEnabled} style="width:18px;height:18px;accent-color:var(--pine);">
+          <label for="f-autosave-enabled" style="margin:0;cursor:pointer;">Enable automatic backup</label>
+        </div>
+        <div class="field" style="max-width:200px;">
+          <label>Interval (seconds)</label>
+          <input type="number" id="f-autosave-interval" min="10" value="${autoInterval}" required>
+        </div>
+      </div>
+      
+      <div class="field" style="margin-top:12px;">
+        <label>Save Destination</label>
+        <select id="f-save-destination">
+          <option value="local" ${state.settings.saveDestination==='local'?'selected':''}>Local Folder / Download</option>
+          <option value="shared" ${state.settings.saveDestination==='shared'?'selected':''}>Shared Network Folder</option>
+          <option value="github" ${state.settings.saveDestination==='github'?'selected':''}>GitHub Repository</option>
+        </select>
+      </div>
+
+      <div class="field" style="margin-top:12px;">
+        <label>Shared Folder Path (if applicable)</label>
+        <input type="text" id="f-shared-path" value="${escapeHtml(state.settings.sharedFolderPath||'')}" placeholder="e.g. /path/to/shared/network/folder">
+      </div>
+
+      <div class="field-row" style="margin-top:12px;">
+        <div class="field">
+          <label>GitHub Personal Access Token</label>
+          <input type="password" id="f-gh-token" value="${escapeHtml(state.settings.githubToken||'')}" placeholder="ghp_...">
+        </div>
+        <div class="field">
+          <label>GitHub Repository (owner/repo)</label>
+          <input type="text" id="f-gh-repo" value="${escapeHtml(state.settings.githubRepo||'')}" placeholder="username/pos-backups">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="margin-top:12px;">Save Auto-Save Settings</button>
+    </form>
+  </div>`;
+}
+
+/* ===================== CASHIER ===================== */
+function renderCashier(){
+  const cats = ['All', ...categoriesFrom(state.items)];
+  const filtered = state.activeCategory==='All' ? state.items : state.items.filter(i=>i.category===state.activeCategory);
+  
+  const readyOnlineOrders = state.orders.filter(o=>o.source==='online' && o.status==='fulfilled');
+  const pendingOnline = state.orders.filter(o=>o.source==='online' && o.status==='pending');
+
+  return `
+  <div class="wrap">
+    ${pendingOnline.length ? `
+    <div class="panel" style="margin-bottom:18px;">
+      <h3>Incoming online orders (${pendingOnline.length})</h3>
+      <p class="sub">Mark as ready once prepped to push them to the cashier to be charged[cite: 1].</p>
+      <table>
+        <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th></th></tr></thead>
+        <tbody>
+          ${pendingOnline.slice().sort((a,b)=>a.createdAt-b.createdAt).map(o=>`
+            <tr>
+              <td class="mono">#${o.id.slice(-5).toUpperCase()}</td>
+              <td>${escapeHtml(o.customer||'—')}</td>
+              <td>${o.items.map(li=>`${li.qty}× ${escapeHtml(li.name)}`).join(', ')}</td>
+              <td class="price-tag">${money(o.total)}</td>
+              <td style="text-align:right;"><button class="btn btn-sage" style="padding:6px 10px;font-size:12px;" data-fulfill="${o.id}">Mark ready</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+
+    ${readyOnlineOrders.length ? `
+    <div style="margin-bottom:18px;">
+      <h3 style="font-size:15px;color:var(--pine);margin-bottom:8px;">Floating Orders (Waiting to be Charged)[cite: 1]</h3>
+      <div class="floating-orders-bar">
+        ${readyOnlineOrders.map(o=>`
+          <div class="floating-order-chip">
+            <div class="floating-order-info">
+              <span class="fname">#${o.id.slice(-5).toUpperCase()} — ${escapeHtml(o.customer||'Guest')}</span>
+              <span class="fmeta">${o.items.map(li=>`${li.qty}× ${escapeHtml(li.name)}`).join(', ')} (${money(o.total)})</span>
+            </div>
+            <button class="btn btn-amber" style="padding:6px 12px;font-size:12px;" data-charge-floating="${o.id}">Charge</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="pos-shell">
+      <div>
+        <div class="cat-chips">
+          ${cats.map(c=>`<button class="chip ${state.activeCategory===c?'active':''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+        </div>
+        ${filtered.length ? `<div class="item-grid">
+          ${filtered.map(i=>`
+            <button class="item-card" data-add="${i.id}">
+              <span class="icat">${escapeHtml(i.category)}</span>
+              <span class="iname">${escapeHtml(i.name)}</span>
+              <span class="iprice">${money(i.price)}</span>
+            </button>
+          `).join('')}
+        </div>` : `<div class="empty-state">No items in this category yet.</div>`}
+        
+        <div style="margin-top:24px;">
+          <button class="btn btn-outline" id="open-report-btn">📊 Charged Orders Report[cite: 1]</button>
+        </div>
+      </div>
+      ${renderTicket('cashier')}
+    </div>
+  </div>`;
+}
+
+/* ===================== MODALS ===================== */
+function renderModal(){
+  const modalRoot = document.getElementById('modal-root');
+  if(!modalRoot) return;
+
+  if(!state.showReportModal && !state.pinPromptRole){
+    modalRoot.innerHTML = '';
+    return;
+  }
+
+  if(state.pinPromptRole){
+    const roleTitle = state.pinPromptRole === 'manager' ? 'Manager Access' : 'Cashier Access';
+    modalRoot.innerHTML = `
+      <div class="modal-overlay" id="pin-overlay">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 style="margin:0;color:var(--white);">${roleTitle}</h3>
+            <button class="btn btn-ghost" id="close-pin-x" style="color:var(--white);border-color:rgba(255,255,255,0.4);">✕</button>
+          </div>
+          <form id="pin-form">
+            <div class="modal-body">
+              <p style="margin-top:0;font-size:13.5px;color:var(--ink-soft);">Please enter your passcode to continue.</p>
+              <div class="field">
+                <label>Passcode</label>
+                <input type="password" id="passcode-input" placeholder="Enter code" autofocus autocomplete="current-password" required>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline" id="close-pin-btn">Cancel</button>
+              <button type="submit" class="btn btn-primary">Enter</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('close-pin-btn').addEventListener('click', ()=>{ state.pinPromptRole=null; render(); });
+    document.getElementById('close-pin-x').addEventListener('click', ()=>{ state.pinPromptRole=null; render(); });
+    document.getElementById('pin-overlay').addEventListener('click', (e)=>{
+      if(e.target.id === 'pin-overlay'){ state.pinPromptRole=null; render(); }
+    });
+
+    document.getElementById('pin-form').addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const entered = document.getElementById('passcode-input').value.trim();
+      const targetRole = state.pinPromptRole;
+      const correctPin = targetRole === 'manager' 
+        ? (state.settings.managerPin || '1234') 
+        : (state.settings.cashierPin || '5678');
+
+      if(entered === correctPin){
+        state.pinPromptRole = null;
+        location.hash = `#/${targetRole}`;
+      } else {
+        showToast('Incorrect passcode. Try again (Default: 1234 for Manager, 5678 for Cashier).', true);
+      }
+    });
+    return;
+  }
+
+  if(state.showReportModal){
+    const chargedOrders = state.orders.filter(o => o.status === 'completed');
+    const totalRevenue = chargedOrders.reduce((sum, o) => sum + o.total, 0);
+
+    const rows = chargedOrders.length ? chargedOrders.slice().sort((a,b)=>b.createdAt-a.createdAt).map(o=>`
+      <tr>
+        <td class="mono">#${o.id.slice(-5).toUpperCase()}</td>
+        <td>${escapeHtml(o.customer||'—')}</td>
+        <td>${o.source === 'online' ? '🛍️ Online' : '🧾 Walk-in'}</td>
+        <td>${o.items.map(li=>`${li.qty}× ${escapeHtml(li.name)}`).join(', ')}</td>
+        <td class="price-tag">${money(o.total)}</td>
+        <td style="color:var(--ink-soft);font-size:12px;white-space:nowrap;">${timeAgo(o.createdAt)}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="6"><div class="empty-state">No charged orders recorded yet.</div></td></tr>`;
+
+    modalRoot.innerHTML = `
+      <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-card" style="max-width:700px;max-height:80vh;">
+          <div class="modal-header">
+            <h3 style="margin:0;color:var(--white);">Charged Orders Report[cite: 1]</h3>
+            <button class="btn btn-ghost" id="close-modal-x" style="color:var(--white);border-color:rgba(255,255,255,0.4);">✕</button>
+          </div>
+          <div class="modal-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+              <span style="font-size:13.5px;color:var(--ink-soft);">Total Charged Orders: <strong>${chargedOrders.length}</strong></span>
+              <span style="font-size:14px;font-family:'IBM Plex Mono';font-weight:700;color:var(--pine);">Total Revenue: ${money(totalRevenue)}</span>
+            </div>
+            <table>
+              <thead><tr><th>Order</th><th>Customer</th><th>Source</th><th>Items</th><th>Total</th><th>Time</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" id="close-modal-btn">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('close-modal-btn').addEventListener('click', ()=>{ state.showReportModal=false; render(); });
+    document.getElementById('close-modal-x').addEventListener('click', ()=>{ state.showReportModal=false; render(); });
+    document.getElementById('modal-overlay').addEventListener('click', (e)=>{
+      if(e.target.id === 'modal-overlay'){ state.showReportModal=false; render(); }
+    });
+  }
+}
+
+/* ===================== ONLINE ORDER ===================== */
+function renderOrder(){
+  if(state.confirmedOrder){
+    const o = state.confirmedOrder;
+    return `
+    <div class="center-wrap">
+      <div class="confirm-card">
+        <div class="checkmark">✓</div>
+        <h2>Order sent!</h2>
+        <p style="color:var(--ink-soft);font-size:14px;">Show this number at the counter when you arrive.</p>
+        <div class="order-num">#${o.id.slice(-5).toUpperCase()}</div>
+        <p style="color:var(--ink-soft);font-size:13px;">${o.items.map(li=>`${li.qty}× ${escapeHtml(li.name)}`).join(', ')} — <strong>${money(o.total)}</strong></p>
+        <button class="btn btn-primary" id="order-again" style="margin-top:14px;">Place another order</button>
+      </div>
+    </div>`;
+  }
+
+  const cats = ['All', ...categoriesFrom(state.items)];
+  const filtered = state.activeCategory==='All' ? state.items : state.items.filter(i=>i.category===state.activeCategory);
+
+  return `
+  <div class="wrap">
+    <div class="hero" style="margin-bottom:24px;">
+      <div class="eyebrow">Order Ahead</div>
+      <h1 style="font-size:26px;">${escapeHtml(state.settings.storeName)}</h1>
+      <p>Browse the menu, build your order, and check out — pay when you pick it up.</p>
+    </div>
+    <div class="pos-shell">
+      <div>
+        <div class="cat-chips">
+          ${cats.map(c=>`<button class="chip ${state.activeCategory===c?'active':''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+        </div>
+        ${filtered.length ? `<div class="item-grid">
+          ${filtered.map(i=>`
+            <button class="item-card" data-add="${i.id}">
+              <span class="icat">${escapeHtml(i.category)}</span>
+              <span class="iname">${escapeHtml(i.name)}</span>
+              <span class="iprice">${money(i.price)}</span>
+            </button>
+          `).join('')}
+        </div>` : `<div class="empty-state">Menu coming soon.</div>`}
+      </div>
+      ${renderTicket('order')}
+    </div>
+  </div>`;
+}
+
+function renderTicket(mode){
+  const lines = Object.entries(state.cart).map(([itemId,qty])=>{
+    const item = state.items.find(i=>i.id===itemId);
+    if(!item) return null;
+    return { item, qty };
+  }).filter(Boolean);
+  const total = lines.reduce((sum,l)=> sum + l.item.price*l.qty, 0);
+
+  const checkoutLabel = mode==='cashier' ? 'Charge & complete' : 'Place order';
+
+  return `
+  <div class="ticket">
+    <div class="ticket-head"><span>${mode==='cashier' ? 'Current sale' : 'Your order'}</span><span class="mono">${lines.reduce((n,l)=>n+l.qty,0)} item${lines.reduce((n,l)=>n+l.qty,0)===1?'':'s'}</span></div>
+    <div class="ticket-body">
+      ${lines.length ? lines.map(l=>`
+        <div class="tline">
+          <span class="tname">${escapeHtml(l.item.name)}</span>
+          <span class="tqty">
+            <button class="qbtn" data-qty-minus="${l.item.id}">−</button>
+            <span>${l.qty}</span>
+            <button class="qbtn" data-qty-plus="${l.item.id}">+</button>
+          </span>
+          <span>${money(l.item.price*l.qty)}</span>
+          <button class="tremove" data-remove="${l.item.id}">✕</button>
+        </div>
+      `).join('') : `<div class="ticket-empty">Nothing added yet.<br>Tap an item to start.</div>`}
+      ${lines.length ? `<div class="ticket-total"><span>Total</span><span>${money(total)}</span></div>` : ''}
+    </div>
+    <div class="perf"></div>
+    <div class="ticket-foot">
+      ${mode==='order' && lines.length ? `
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="cust-name" placeholder="For the order ticket">
+        </div>
+        <div class="field">
+          <label>Notes (optional)</label>
+          <input type="text" id="cust-notes" placeholder="e.g. oat milk, no onions">
+        </div>
+      ` : ''}
+      <button class="btn ${mode==='cashier'?'btn-primary':'btn-amber'}" id="checkout-btn" ${!lines.length?'disabled':''} style="justify-content:center;">${checkoutLabel}</button>
+      ${lines.length ? `<button class="btn btn-outline" id="clear-cart-btn" style="justify-content:center;">Clear</button>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ===================== EVENT HANDLERS ===================== */
+function attachHandlers(view){
+  const cardManager = document.getElementById('card-manager');
+  if(cardManager) cardManager.addEventListener('click', ()=>{ state.pinPromptRole='manager'; render(); });
+
+  const cardCashier = document.getElementById('card-cashier');
+  if(cardCashier) cardCashier.addEventListener('click', ()=>{ state.pinPromptRole='cashier'; render(); });
+
+  const navManager = document.getElementById('nav-manager');
+  if(navManager) navManager.addEventListener('click', ()=>{ 
+    if(currentView() !== 'manager'){ state.pinPromptRole='manager'; render(); }
+  });
+
+  const navCashier = document.getElementById('nav-cashier');
+  if(navCashier) navCashier.addEventListener('click', ()=>{ 
+    if(currentView() !== 'cashier'){ state.pinPromptRole='cashier'; render(); }
+  });
+
+  document.querySelectorAll('[data-mtab]').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.managerTab=b.dataset.mtab; state.editingItemId=null; render(); });
+  });
+
+  const itemForm = document.getElementById('item-form');
+  if(itemForm){
+    itemForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const name = document.getElementById('f-name').value.trim();
+      const price = parseFloat(document.getElementById('f-price').value);
+      const category = document.getElementById('f-category').value.trim();
+      if(!name || isNaN(price) || price<0 || !category) return;
+      const wasEditing = state.editingItemId;
+      const nextItems = wasEditing
+        ? state.items.map(i=> i.id===wasEditing ? {...i, name, price, category} : i)
+        : [...state.items, {id:uid('itm'), name, price, category}];
+
+      syncing = true;
+      const ok = await saveItems(nextItems);
+      syncing = false;
+
+      if(ok){
+        state.items = nextItems;
+        state.editingItemId = null;
+        showToast(wasEditing ? 'Item updated' : 'Item added');
+      } else {
+        showToast('Could not save — ' + (lastStorageError || 'try again'), true);
+      }
+      render();
+    });
+  }
+  const cancelEdit = document.getElementById('cancel-edit');
+  if(cancelEdit) cancelEdit.addEventListener('click', ()=>{ state.editingItemId=null; render(); });
+
+  document.querySelectorAll('[data-edit-item]').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.editingItemId=b.dataset.editItem; state.managerTab='menu'; render(); });
+  });
+  document.querySelectorAll('[data-delete-item]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const nextItems = state.items.filter(i=>i.id!==b.dataset.deleteItem);
+      syncing = true;
+      const ok = await saveItems(nextItems);
+      syncing = false;
+      if(ok){ state.items = nextItems; showToast('Item deleted'); }
+      else { showToast('Could not delete — ' + (lastStorageError || 'try again'), true); }
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-fulfill]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const nextOrders = state.orders.map(o=> o.id===b.dataset.fulfill ? {...o, status:'fulfilled'} : o);
+      syncing = true;
+      const ok = await saveOrders(nextOrders);
+      syncing = false;
+      if(ok){ state.orders = nextOrders; showToast('Order marked ready & pushed to cashier[cite: 1]'); }
+      else { showToast('Could not update — ' + (lastStorageError || 'try again'), true); }
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-charge-floating]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const orderId = b.dataset.chargeFloating;
+      const nextOrders = state.orders.map(o=> o.id===orderId ? {...o, status:'completed'} : o);
+      syncing = true;
+      const ok = await saveOrders(nextOrders);
+      syncing = false;
+      if(ok){
+        state.orders = nextOrders;
+        showToast('Floating order charged successfully[cite: 1]');
+      } else {
+        showToast('Could not charge order — ' + (lastStorageError || 'try again'), true);
+      }
+      render();
+    });
+  });
+
+  const openReportBtn = document.getElementById('open-report-btn');
+  if(openReportBtn){
+    openReportBtn.addEventListener('click', ()=>{
+      state.showReportModal = true;
+      render();
+    });
+  }
+
+  const settingsForm = document.getElementById('settings-form');
+  if(settingsForm){
+    settingsForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const nextSettings = { 
+        ...state.settings, 
+        storeName: document.getElementById('f-storename').value.trim() || 'Corner Counter',
+        managerPin: document.getElementById('f-mgr-pin').value.trim() || '1234',
+        cashierPin: document.getElementById('f-cashier-pin').value.trim() || '5678'
+      };
+      syncing = true;
+      const ok = await saveSettings(nextSettings);
+      syncing = false;
+      if(ok){ state.settings = nextSettings; showToast('Settings and passcodes saved'); }
+      else { showToast('Could not save — ' + (lastStorageError || 'try again'), true); }
+      render();
+    });
+  }
+
+  const autosaveForm = document.getElementById('autosave-form');
+  if(autosaveForm){
+    autosaveForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const enabled = document.getElementById('f-autosave-enabled').checked;
+      const intervalVal = parseInt(document.getElementById('f-autosave-interval').value, 10) || 300;
+      
+      const nextSettings = {
+        ...state.settings,
+        autoSaveEnabled: enabled,
+        autoSaveInterval: Math.max(10, intervalVal),
+        saveDestination: document.getElementById('f-save-destination').value,
+        sharedFolderPath: document.getElementById('f-shared-path').value.trim(),
+        githubToken: document.getElementById('f-gh-token').value.trim(),
+        githubRepo: document.getElementById('f-gh-repo').value.trim()
+      };
+      
+      syncing = true;
+      const ok = await saveSettings(nextSettings);
+      syncing = false;
+      if(ok){
+        state.settings = nextSettings;
+        showToast('Auto-save settings updated successfully');
+      } else {
+        showToast('Could not save auto-save settings', true);
+      }
+      render();
+    });
+  }
+
+  const copyBtn = document.getElementById('copy-link');
+  if(copyBtn){
+    copyBtn.addEventListener('click', async ()=>{
+      const input = document.getElementById('share-url');
+      input.select();
+      try{ await navigator.clipboard.writeText(input.value); showToast('Link copied'); }
+      catch(e){ showToast('Select the link above and copy it'); }
+    });
+  }
+
+  const exportBtn = document.getElementById('export-json-btn');
+  if(exportBtn) exportBtn.addEventListener('click', ()=> saveSnapshotToDestination(false, false));
+
+  const importInput = document.getElementById('import-json-input');
+  if(importInput){
+    importInput.addEventListener('change', async (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      try{
+        const ok = await importSnapshotFromFile(file);
+        showToast(ok ? 'Backup restored' : 'Restored locally, but sync failed');
+        render();
+      }catch(err){
+        showToast(err.message || 'Could not read that file');
+      }
+      e.target.value = '';
+    });
+  }
+
+  document.querySelectorAll('[data-cat]').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.activeCategory=b.dataset.cat; render(); });
+  });
+
+  document.querySelectorAll('[data-add]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const id=b.dataset.add;
+      state.cart[id] = (state.cart[id]||0)+1;
+      render();
+    });
+  });
+  document.querySelectorAll('[data-qty-plus]').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.cart[b.dataset.qtyPlus]++; render(); });
+  });
+  document.querySelectorAll('[data-qty-minus]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const id=b.dataset.qtyMinus;
+      state.cart[id]--;
+      if(state.cart[id]<=0) delete state.cart[id];
+      render();
+    });
+  });
+  document.querySelectorAll('[data-remove]').forEach(b=>{
+    b.addEventListener('click', ()=>{ delete state.cart[b.dataset.remove]; render(); });
+  });
+  const clearBtn = document.getElementById('clear-cart-btn');
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.cart={}; render(); });
+
+  const checkoutBtn = document.getElementById('checkout-btn');
+  if(checkoutBtn){
+    checkoutBtn.addEventListener('click', async ()=>{
+      const lines = Object.entries(state.cart).map(([itemId,qty])=>{
+        const item = state.items.find(i=>i.id===itemId);
+        return item ? {itemId, name:item.name, price:item.price, qty} : null;
+      }).filter(Boolean);
+      if(!lines.length) return;
+      const total = lines.reduce((s,l)=>s+l.price*l.qty,0);
+
+      if(view==='cashier'){
+        const order = { id:uid('ord'), items:lines, total, customer:'Walk-in', notes:'', source:'cashier', status:'completed', createdAt:Date.now() };
+        const nextOrders = [...state.orders, order];
+        syncing = true;
+        const ok = await saveOrders(nextOrders);
+        syncing = false;
+        if(ok){
+          state.orders = nextOrders;
+          state.cart = {};
+          showToast(`Sale complete — ${money(total)}`);
+        } else {
+          showToast('Could not complete sale', true);
+        }
+        render();
+      } else {
+        const nameInput = document.getElementById('cust-name');
+        const notesInput = document.getElementById('cust-notes');
+        const customer = nameInput ? nameInput.value.trim() : '';
+        const notes = notesInput ? notesInput.value.trim() : '';
+        const order = { id:uid('ord'), items:lines, total, customer: customer||'Guest', notes, source:'online', status:'pending', createdAt:Date.now() };
+        const nextOrders = [...state.orders, order];
+        syncing = true;
+        const ok = await saveOrders(nextOrders);
+        syncing = false;
+        if(ok){
+          state.orders = nextOrders;
+          state.cart = {};
+          state.confirmedOrder = order;
+        } else {
+          showToast('Could not place order', true);
+        }
+        render();
+      }
+    });
+  }
+
+  const orderAgain = document.getElementById('order-again');
+  if(orderAgain) orderAgain.addEventListener('click', ()=>{ state.confirmedOrder=null; render(); });
+}
+
+boot();
+</script>
+</body>
+</html>
