@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-09-03T06:22:48.639Z",
+  "exportedAt": "2026-09-03T06:23:06.407Z",
   "settings": {
     "storeName": "Corner Counter",
     "managerPin": "1234",
@@ -10,13 +10,6 @@
     "githubRepo": "Pogs00/Mini",
     "lastPushedAt": 1788416550308
   },
-  "items": [
-    {
-      "id": "itm_rjcpxti1o3c",
-      "name": "aaa",
-      "price": 1,
-      "category": "aa"
-    }
-  ],
+  "items": [],
   "orders": []
 }
