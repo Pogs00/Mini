@@ -1,0 +1,14 @@
+{
+  "exportedAt": "2026-09-03T06:22:28.609Z",
+  "settings": {
+    "storeName": "Corner Counter",
+    "managerPin": "1234",
+    "cashierPin": "5678",
+    "currency": "₱",
+    "autoSaveEnabled": false,
+    "autoSaveInterval": 300,
+    "githubRepo": "Pogs00/Mini"
+  },
+  "items": [],
+  "orders": []
+}
