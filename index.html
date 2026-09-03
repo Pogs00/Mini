@@ -253,7 +253,7 @@ let storageAvailable = true;
 let lastStorageError = '';
 const localCache = {}; 
 let autoSaveTimer = null;
-let savedFileHandle = null; // Store file handle locally to overwrite the same file
+let syncingBackup = false; // guards Push/Pull GitHub buttons from double-firing
 
 async function checkStorageAvailable(){
   if(typeof window === 'undefined' || !window.storage) return false;
@@ -306,10 +306,9 @@ async function getSettings(){
     storeName:'Corner Counter', 
     managerPin:'1234', 
     cashierPin:'5678', 
+    currency:'$',
     autoSaveEnabled:false, 
     autoSaveInterval:300,
-    saveDestination: 'local',
-    sharedFolderPath: '',
     githubToken: '',
     githubRepo: ''
   }); 
@@ -321,7 +320,18 @@ async function saveSettings(s){
 }
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
-function money(n){ return '$' + Number(n).toFixed(2); }
+const CURRENCIES = [
+  { code:'USD', symbol:'$', label:'US Dollar ($)' },
+  { code:'EUR', symbol:'€', label:'Euro (€)' },
+  { code:'GBP', symbol:'£', label:'British Pound (£)' },
+  { code:'JPY', symbol:'¥', label:'Japanese Yen (¥)' },
+  { code:'PHP', symbol:'₱', label:'Philippine Peso (₱)' },
+  { code:'INR', symbol:'₹', label:'Indian Rupee (₹)' },
+  { code:'AUD', symbol:'A$', label:'Australian Dollar (A$)' },
+  { code:'CAD', symbol:'C$', label:'Canadian Dollar (C$)' },
+  { code:'CUSTOM', symbol:'', label:'Custom symbol…' },
+];
+function money(n){ return (state.settings.currency || '$') + Number(n).toFixed(2); }
 function timeAgo(ts){
   const s = Math.floor((Date.now()-ts)/1000);
   if(s<60) return 'just now';
@@ -331,113 +341,119 @@ function timeAgo(ts){
 }
 
 function buildSnapshot(){
+  // Never include the GitHub token in the pushed JSON — GitHub's push protection
+  // rejects any push containing a live secret, and a backup file is a bad place
+  // to store credentials anyway.
+  const { githubToken, ...safeSettings } = state.settings;
   return JSON.stringify({
     exportedAt: new Date().toISOString(),
-    settings: state.settings,
+    settings: safeSettings,
     items: state.items,
     orders: state.orders,
   }, null, 2);
 }
 
-async function downloadSnapshot(silent){
-  const snapshotData = buildSnapshot();
+function githubBackupPath(){
   const filename = `${(state.settings.storeName||'pos').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-backup.json`;
-  
-  const blob = new Blob([snapshotData], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-  if(!silent) showToast('Backup file updated');
+  return `backups/${filename}`;
 }
 
-async function saveSnapshotToDestination(silent, isBackgroundAutoSave = false){
+function normalizeGithubRepo(raw){
+  // Accepts "owner/repo", a full GitHub URL, with or without trailing slash/.git, and
+  // reduces it to the "owner/repo" form the GitHub API expects.
+  let v = (raw || '').trim();
+  v = v.replace(/^https?:\/\/(www\.)?github\.com\//i, '');
+  v = v.replace(/\.git$/i, '');
+  v = v.replace(/^\/+|\/+$/g, '');
+  return v;
+}
+
+async function markPushed(){
+  // Records when the JSON was last pushed, so auto-push has something to report against.
+  const nextSettings = { ...state.settings, lastPushedAt: Date.now() };
+  const ok = await storeSet(KEYS.SETTINGS, nextSettings);
+  if(ok) state.settings = nextSettings;
+}
+
+async function githubErrorMessage(response, fallback){
+  try{
+    const body = await response.json();
+    if(body && body.message) return `${response.status}: ${body.message}`;
+  }catch(e){ /* not JSON, fall through */ }
+  if(response.status===401) return '401: Invalid or expired token.';
+  if(response.status===403) return '403: Token lacks access (check scopes) or rate-limited.';
+  if(response.status===404) return '404: Repo not found — check the owner/repo spelling and that the token can see it.';
+  return `${response.status}: ${fallback}`;
+}
+
+async function testGithubConnection(tokenOverride, repoOverride){
+  const token = tokenOverride !== undefined ? tokenOverride : state.settings.githubToken;
+  const repo = normalizeGithubRepo(repoOverride !== undefined ? repoOverride : state.settings.githubRepo);
+  if(!token || !repo){
+    return { ok:false, message:'Enter a GitHub token and repository first.' };
+  }
+  try{
+    const res = await fetch(`https://api.github.com/repos/${repo}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if(!res.ok){
+      return { ok:false, message: await githubErrorMessage(res, 'Could not reach that repository.') };
+    }
+    const data = await res.json();
+    if(data.permissions && data.permissions.push === false){
+      return { ok:false, message: `Connected to ${data.full_name}, but this token can't push to it.` };
+    }
+    return { ok:true, message: `Connected to ${data.full_name}` };
+  }catch(err){
+    console.error(err);
+    return { ok:false, message: 'Network error reaching GitHub — check your connection.' };
+  }
+}
+
+async function pushSnapshotToGithub(silent){
+  const token = state.settings.githubToken;
+  const repo = normalizeGithubRepo(state.settings.githubRepo);
+  if(!token || !repo){
+    if(!silent) showToast('GitHub Token and Repository must be configured', true);
+    return false;
+  }
+
   const snapshotData = buildSnapshot();
-  const filename = `${(state.settings.storeName||'pos').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-backup.json`;
-  const destination = state.settings.saveDestination || 'local';
+  try {
+    const apiUrl = `https://api.github.com/repos/${repo}/contents/${githubBackupPath()}`;
 
-  if(destination === 'local'){
-    if(window.showSaveFilePicker){
-      try {
-        if(!savedFileHandle){
-          // If running automatically in the background without user interaction, 
-          // browser security will block showing the picker. Skip to prevent cluttering Downloads.
-          if(isBackgroundAutoSave){
-            console.log('Auto-save skipped: Local file handle not yet established. Click "Download JSON backup" once to authorize folder.');
-            return;
-          }
-          savedFileHandle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }]
-          });
-        }
-        const writable = await savedFileHandle.createWritable();
-        await writable.write(snapshotData);
-        await writable.close();
-        if(!silent) showToast('Backup file replaced successfully');
-        return;
-      } catch(e) {
-        if(e.name !== 'AbortError') {
-          console.warn('File picker handle failed', e);
-          savedFileHandle = null;
-        } else {
-          return;
-        }
-      }
-    }
-    if(!isBackgroundAutoSave) downloadSnapshot(silent);
-
-  } else if(destination === 'shared'){
-    const path = state.settings.sharedFolderPath;
-    if(!path){
-      if(!silent) showToast('Shared folder path is not configured', true);
-      return;
-    }
-    if(!isBackgroundAutoSave) downloadSnapshot(silent); 
-    if(!silent) showToast(`Synced & replaced in shared folder: ${path}`);
-
-  } else if(destination === 'github'){
-    const token = state.settings.githubToken;
-    const repo = state.settings.githubRepo;
-    if(!token || !repo){
-      if(!silent) showToast('GitHub Token and Repository must be configured', true);
-      return;
+    let fileSha = null;
+    const getRes = await fetch(apiUrl, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if(getRes.ok){
+      const fileData = await getRes.json();
+      fileSha = fileData.sha;
+    } else if(getRes.status !== 404){
+      throw new Error(await githubErrorMessage(getRes, 'Could not check for an existing backup.'));
     }
 
-    try {
-      const filePath = `backups/${filename}`;
-      const apiUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
-      
-      let fileSha = null;
-      const getRes = await fetch(apiUrl, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if(getRes.ok){
-        const fileData = await getRes.json();
-        fileSha = fileData.sha;
-      }
+    const response = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: `Push backup: ${new Date().toISOString()}`,
+        content: btoa(unescape(encodeURIComponent(snapshotData))),
+        ...(fileSha ? { sha: fileSha } : {})
+      })
+    });
 
-      const response = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: `Auto-save replacement backup: ${new Date().toISOString()}`,
-          content: btoa(unescape(encodeURIComponent(snapshotData))),
-          ...(fileSha ? { sha: fileSha } : {})
-        })
-      });
-
-      if(!response.ok) throw new Error('GitHub API update failed');
-      if(!silent) showToast('GitHub backup file successfully replaced!');
-    } catch(err) {
-      console.error(err);
-      if(!silent) showToast('GitHub sync failed. Check your token/repo.', true);
-    }
+    if(!response.ok) throw new Error(await githubErrorMessage(response, 'GitHub API update failed'));
+    await markPushed();
+    if(!silent) showToast('Pushed to GitHub successfully!');
+    return true;
+  } catch(err) {
+    console.error(err);
+    if(!silent) showToast('GitHub push failed — ' + (err.message || 'check your token/repo.'), true);
+    return false;
   }
 }
 
@@ -445,19 +461,24 @@ function setupAutoSaveTimer(){
   if(autoSaveTimer) clearInterval(autoSaveTimer);
   if(state.settings && state.settings.autoSaveEnabled){
     const intervalSec = Math.max(10, parseInt(state.settings.autoSaveInterval, 10) || 300);
+    // Auto-push periodically pushes the exact same JSON snapshot to GitHub that
+    // the manual "Push JSON to GitHub" button sends, so the repo backup always
+    // reflects the latest items/orders/settings without anyone clicking Push.
     autoSaveTimer = setInterval(()=>{
-      saveSnapshotToDestination(true, true);
+      pushSnapshotToGithub(true);
     }, intervalSec * 1000);
   }
 }
 
-async function importSnapshotFromFile(file){
-  const text = await file.text();
-  const data = JSON.parse(text);
+async function applySnapshotData(data){
   if(!data || !Array.isArray(data.items) || !Array.isArray(data.orders)){
     throw new Error('That file doesn\'t look like a Counter backup.');
   }
-  const nextSettings = data.settings || state.settings;
+  // Backups never contain the GitHub token (see buildSnapshot), so keep whatever
+  // token is already configured on this device instead of clearing it on pull/import.
+  const nextSettings = data.settings
+    ? { ...data.settings, githubToken: state.settings.githubToken }
+    : state.settings;
   syncing = true;
   const [okI, okO, okS] = await Promise.all([
     saveItems(data.items), saveOrders(data.orders), saveSettings(nextSettings)
@@ -470,6 +491,43 @@ async function importSnapshotFromFile(file){
   }
   return false;
 }
+
+async function pullSnapshotFromGithub(){
+  const token = state.settings.githubToken;
+  const repo = normalizeGithubRepo(state.settings.githubRepo);
+  if(!token || !repo){
+    throw new Error('GitHub Token and Repository must be configured');
+  }
+  const apiUrl = `https://api.github.com/repos/${repo}/contents/${githubBackupPath()}`;
+
+  const res = await fetch(apiUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+  if(!res.ok) throw new Error(await githubErrorMessage(res, 'No backup found in that GitHub repository yet.'));
+  const fileData = await res.json();
+  const text = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g,''))));
+  const data = JSON.parse(text);
+  return applySnapshotData(data);
+}
+
+async function pullSnapshotFromFile(file){
+  const text = await file.text();
+  const data = JSON.parse(text);
+  return applySnapshotData(data);
+}
+
+function downloadSnapshotLocally(){
+  const snapshotData = buildSnapshot();
+  const filename = `${(state.settings.storeName||'pos').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-backup.json`;
+  const blob = new Blob([snapshotData], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Local copy downloaded');
+}
+
+
 
 async function ensureSeedData(){
   const items = await getItems();
@@ -491,7 +549,7 @@ async function ensureSeedData(){
 let state = {
   items: [],
   orders: [],
-  settings: { storeName:'Corner Counter', managerPin:'1234', cashierPin:'5678', autoSaveEnabled:false, autoSaveInterval:300 },
+  settings: { storeName:'Corner Counter', managerPin:'1234', cashierPin:'5678', currency:'$', autoSaveEnabled:false, autoSaveInterval:300 },
   cart: {},          
   activeCategory: 'All',
   managerTab: 'menu',
@@ -499,6 +557,7 @@ let state = {
   loaded: false,
   showReportModal: false,
   pinPromptRole: null, 
+  githubTestStatus: null, // { ok: bool, message: string } | null, from the "Test Connection" button
 };
 let pollTimer = null;
 let syncing = false; 
@@ -574,7 +633,7 @@ function renderStorageBanner(){
   root.innerHTML = `
     <div style="background:#FCEFD8;color:var(--amber-dark);font-size:12.5px;padding:8px 20px;text-align:center;border-bottom:1px solid var(--line);">
       ⚠ Live sync isn't available right now — changes are kept only in this browser tab.
-      Use <strong>Manager → Share &amp; Settings → Backup &amp; export</strong> to save your work.
+      Use <strong>Manager → Share &amp; Settings → Push &amp; pull</strong> to save your work.
     </div>`;
 }
 
@@ -821,10 +880,15 @@ function renderManagerShare(){
   const isAutoEnabled = state.settings.autoSaveEnabled ? 'checked' : '';
   const autoInterval = state.settings.autoSaveInterval || 300;
 
+  const currentCurrency = state.settings.currency || '$';
+  const matchedCurrency = CURRENCIES.find(c=>c.symbol===currentCurrency && c.code!=='CUSTOM');
+  const currencySelectValue = matchedCurrency ? matchedCurrency.code : 'CUSTOM';
+  const isCustomCurrency = !matchedCurrency;
+
   return `
   <div class="panel">
     <h3>Store settings &amp; Passcodes</h3>
-    <p class="sub">Configure store name and the passcodes required to access Manager or Cashier views.</p>
+    <p class="sub">Configure store name, currency, and the passcodes required to access Manager or Cashier views.</p>
     <form id="settings-form">
       <div class="field-row">
         <div class="field">
@@ -840,6 +904,18 @@ function renderManagerShare(){
           <input type="text" id="f-cashier-pin" value="${escapeHtml(state.settings.cashierPin || '5678')}" required>
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Currency</label>
+          <select id="f-currency-select">
+            ${CURRENCIES.map(c=>`<option value="${c.code}" ${currencySelectValue===c.code?'selected':''}>${escapeHtml(c.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" id="f-currency-custom-wrap" style="${isCustomCurrency?'':'display:none;'}">
+          <label>Custom symbol</label>
+          <input type="text" id="f-currency-custom" maxlength="4" placeholder="e.g. ₱, kr, Rp" value="${escapeHtml(isCustomCurrency ? currentCurrency : '')}">
+        </div>
+      </div>
       <button type="submit" class="btn btn-primary" style="margin-top:6px;">Save Settings</button>
     </form>
   </div>
@@ -853,43 +929,32 @@ function renderManagerShare(){
   </div>
 
   <div class="panel">
-    <h3>Backup &amp; export</h3>
-    <p class="sub">Keep a copy of your menu, orders, and settings — or restore from one.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-      <button class="btn btn-primary" id="export-json-btn">⬇ Download JSON backup</button>
-      <label class="btn btn-outline" style="margin:0;">⬆ Import JSON backup
-        <input type="file" id="import-json-input" accept="application/json" style="display:none;">
+    <h3>Push &amp; pull (GitHub)</h3>
+    <p class="sub">Push pushes your menu, orders, and settings as a JSON file to the GitHub repo configured below. Pull fetches that same JSON back and restores it here.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <button class="btn btn-primary" id="push-json-btn">⬆ Push JSON to GitHub</button>
+      <button class="btn btn-outline" id="pull-github-btn">⬇ Pull JSON from GitHub</button>
+      <label class="btn btn-outline" style="margin:0;">⬇ Pull from file
+        <input type="file" id="pull-json-input" accept="application/json" style="display:none;">
       </label>
+      <button class="btn btn-outline" id="download-local-btn">⬇ Download local copy</button>
     </div>
+    <p class="sub" style="margin:0;">${state.settings.lastPushedAt ? `Last pushed ${timeAgo(state.settings.lastPushedAt)}.` : 'Nothing pushed yet.'} ${(!state.settings.githubToken || !state.settings.githubRepo) ? ' Configure your GitHub token &amp; repo below to enable push/pull.' : ''}</p>
   </div>
 
   <div class="panel">
-    <h3>Automatic save &amp; backup destination</h3>
-    <p class="sub">Choose where your automated snapshots should be sent. Files are replaced in-place without creating duplicate timestamps.</p>
+    <h3>Automatic push to GitHub</h3>
+    <p class="sub">While enabled, the app automatically pushes the latest JSON to this GitHub repo on the interval below — the same action as clicking "Push JSON to GitHub" by hand.</p>
     <form id="autosave-form">
       <div class="field-row" style="align-items:flex-end;">
         <div class="field" style="flex:0 0 auto;min-width:auto;flex-direction:row;align-items:center;gap:8px;padding-top:8px;">
           <input type="checkbox" id="f-autosave-enabled" ${isAutoEnabled} style="width:18px;height:18px;accent-color:var(--pine);">
-          <label for="f-autosave-enabled" style="margin:0;cursor:pointer;">Enable automatic backup</label>
+          <label for="f-autosave-enabled" style="margin:0;cursor:pointer;">Enable automatic push</label>
         </div>
         <div class="field" style="max-width:200px;">
           <label>Interval (seconds)</label>
           <input type="number" id="f-autosave-interval" min="10" value="${autoInterval}" required>
         </div>
-      </div>
-      
-      <div class="field" style="margin-top:12px;">
-        <label>Save Destination</label>
-        <select id="f-save-destination">
-          <option value="local" ${state.settings.saveDestination==='local'?'selected':''}>Local Folder / Download</option>
-          <option value="shared" ${state.settings.saveDestination==='shared'?'selected':''}>Shared Network Folder</option>
-          <option value="github" ${state.settings.saveDestination==='github'?'selected':''}>GitHub Repository</option>
-        </select>
-      </div>
-
-      <div class="field" style="margin-top:12px;">
-        <label>Shared Folder Path (if applicable)</label>
-        <input type="text" id="f-shared-path" value="${escapeHtml(state.settings.sharedFolderPath||'')}" placeholder="e.g. /path/to/shared/network/folder">
       </div>
 
       <div class="field-row" style="margin-top:12px;">
@@ -899,11 +964,16 @@ function renderManagerShare(){
         </div>
         <div class="field">
           <label>GitHub Repository (owner/repo)</label>
-          <input type="text" id="f-gh-repo" value="${escapeHtml(state.settings.githubRepo||'')}" placeholder="username/pos-backups">
+          <input type="text" id="f-gh-repo" value="${escapeHtml(state.settings.githubRepo||'')}" placeholder="owner/repo, e.g. Pogs00/Mini">
         </div>
       </div>
 
-      <button type="submit" class="btn btn-primary" style="margin-top:12px;">Save Auto-Save Settings</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" id="test-github-btn">🔌 Test Connection</button>
+        <span id="github-test-status" style="font-size:12.5px;${state.githubTestStatus ? (state.githubTestStatus.ok ? 'color:var(--sage);' : 'color:var(--rust);') : 'color:var(--ink-soft);'}">${state.githubTestStatus ? escapeHtml(state.githubTestStatus.message) : ''}</span>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="margin-top:12px;">Save Auto-Push Settings</button>
     </form>
   </div>`;
 }
@@ -1282,15 +1352,28 @@ function attachHandlers(view){
     });
   }
 
+  const currencySelect = document.getElementById('f-currency-select');
+  if(currencySelect){
+    currencySelect.addEventListener('change', ()=>{
+      const wrap = document.getElementById('f-currency-custom-wrap');
+      if(wrap) wrap.style.display = currencySelect.value==='CUSTOM' ? '' : 'none';
+    });
+  }
+
   const settingsForm = document.getElementById('settings-form');
   if(settingsForm){
     settingsForm.addEventListener('submit', async (e)=>{
       e.preventDefault();
+      const selectedCode = document.getElementById('f-currency-select').value;
+      const matched = CURRENCIES.find(c=>c.code===selectedCode);
+      const customSymbol = document.getElementById('f-currency-custom').value.trim();
+      const currency = (selectedCode==='CUSTOM' ? customSymbol : (matched ? matched.symbol : '$')) || '$';
       const nextSettings = { 
         ...state.settings, 
         storeName: document.getElementById('f-storename').value.trim() || 'Corner Counter',
         managerPin: document.getElementById('f-mgr-pin').value.trim() || '1234',
-        cashierPin: document.getElementById('f-cashier-pin').value.trim() || '5678'
+        cashierPin: document.getElementById('f-cashier-pin').value.trim() || '5678',
+        currency
       };
       syncing = true;
       const ok = await saveSettings(nextSettings);
@@ -1312,10 +1395,8 @@ function attachHandlers(view){
         ...state.settings,
         autoSaveEnabled: enabled,
         autoSaveInterval: Math.max(10, intervalVal),
-        saveDestination: document.getElementById('f-save-destination').value,
-        sharedFolderPath: document.getElementById('f-shared-path').value.trim(),
         githubToken: document.getElementById('f-gh-token').value.trim(),
-        githubRepo: document.getElementById('f-gh-repo').value.trim()
+        githubRepo: normalizeGithubRepo(document.getElementById('f-gh-repo').value)
       };
       
       syncing = true;
@@ -1323,10 +1404,25 @@ function attachHandlers(view){
       syncing = false;
       if(ok){
         state.settings = nextSettings;
-        showToast('Auto-save settings updated successfully');
+        showToast('Auto-push settings updated successfully');
       } else {
-        showToast('Could not save auto-save settings', true);
+        showToast('Could not save auto-push settings', true);
       }
+      render();
+    });
+  }
+
+  const testGithubBtn = document.getElementById('test-github-btn');
+  if(testGithubBtn){
+    testGithubBtn.addEventListener('click', async ()=>{
+      const tokenVal = document.getElementById('f-gh-token').value.trim();
+      const repoVal = document.getElementById('f-gh-repo').value.trim();
+      const statusEl = document.getElementById('github-test-status');
+      testGithubBtn.disabled = true;
+      if(statusEl){ statusEl.style.color = 'var(--ink-soft)'; statusEl.textContent = 'Testing…'; }
+      const result = await testGithubConnection(tokenVal, repoVal);
+      state.githubTestStatus = result;
+      testGithubBtn.disabled = false;
       render();
     });
   }
@@ -1341,22 +1437,47 @@ function attachHandlers(view){
     });
   }
 
-  const exportBtn = document.getElementById('export-json-btn');
-  if(exportBtn) exportBtn.addEventListener('click', ()=> saveSnapshotToDestination(false, false));
+  const pushBtn = document.getElementById('push-json-btn');
+  if(pushBtn){
+    pushBtn.addEventListener('click', async ()=>{
+      pushBtn.disabled = true;
+      await pushSnapshotToGithub(false);
+      pushBtn.disabled = false;
+      render();
+    });
+  }
 
-  const importInput = document.getElementById('import-json-input');
-  if(importInput){
-    importInput.addEventListener('change', async (e)=>{
+  const downloadLocalBtn = document.getElementById('download-local-btn');
+  if(downloadLocalBtn) downloadLocalBtn.addEventListener('click', downloadSnapshotLocally);
+
+  const pullInput = document.getElementById('pull-json-input');
+  if(pullInput){
+    pullInput.addEventListener('change', async (e)=>{
       const file = e.target.files[0];
       if(!file) return;
       try{
-        const ok = await importSnapshotFromFile(file);
-        showToast(ok ? 'Backup restored' : 'Restored locally, but sync failed');
+        const ok = await pullSnapshotFromFile(file);
+        showToast(ok ? 'Backup pulled and restored' : 'Restored locally, but sync failed');
         render();
       }catch(err){
         showToast(err.message || 'Could not read that file');
       }
       e.target.value = '';
+    });
+  }
+
+  const pullGithubBtn = document.getElementById('pull-github-btn');
+  if(pullGithubBtn){
+    pullGithubBtn.addEventListener('click', async ()=>{
+      pullGithubBtn.disabled = true;
+      try{
+        const ok = await pullSnapshotFromGithub();
+        showToast(ok ? 'Pulled latest from GitHub' : 'Pulled, but sync failed locally');
+        render();
+      }catch(err){
+        showToast(err.message || 'Could not pull from GitHub', true);
+      }
+      pullGithubBtn.disabled = false;
     });
   }
 
