@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-09-03T06:23:06.407Z",
+  "exportedAt": "2026-09-03T06:42:49.033Z",
   "settings": {
     "storeName": "Corner Counter",
     "managerPin": "1234",
@@ -10,6 +10,13 @@
     "githubRepo": "Pogs00/Mini",
     "lastPushedAt": 1788416550308
   },
-  "items": [],
+  "items": [
+    {
+      "id": "itm_6h2rta5r754",
+      "name": "Siomai",
+      "price": 100,
+      "category": "Food"
+    }
+  ],
   "orders": []
 }
