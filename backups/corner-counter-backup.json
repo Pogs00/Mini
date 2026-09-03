@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-09-03T06:22:28.609Z",
+  "exportedAt": "2026-09-03T06:22:48.639Z",
   "settings": {
     "storeName": "Corner Counter",
     "managerPin": "1234",
@@ -7,8 +7,16 @@
     "currency": "₱",
     "autoSaveEnabled": false,
     "autoSaveInterval": 300,
-    "githubRepo": "Pogs00/Mini"
+    "githubRepo": "Pogs00/Mini",
+    "lastPushedAt": 1788416550308
   },
-  "items": [],
+  "items": [
+    {
+      "id": "itm_rjcpxti1o3c",
+      "name": "aaa",
+      "price": 1,
+      "category": "aa"
+    }
+  ],
   "orders": []
 }
