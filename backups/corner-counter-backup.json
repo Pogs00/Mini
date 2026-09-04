@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-09-04T01:54:42.454Z",
+  "exportedAt": "2026-09-04T01:55:14.781Z",
   "settings": {
     "storeName": "Corner Counter",
     "managerPin": "1234",
@@ -15,6 +15,12 @@
       "id": "itm_6h2rta5r754",
       "name": "Siomai",
       "price": 100,
+      "category": "Food"
+    },
+    {
+      "id": "itm_vyubky8xaid",
+      "name": "Sausage with Rice and Egg",
+      "price": 120,
       "category": "Food"
     }
   ],
